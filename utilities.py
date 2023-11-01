@@ -66,9 +66,23 @@ def logout_user():
     return redirect(url_for('login'))
 
 def handle_message(socketio, message):
-    # Handle the message (e.g., save it to the database or process it)
-    # Broadcast the message to all connected clients
-    socketio.emit('message', message, broadcast=True)
+    user = Users.query.filter_by(username=session['user']).first()
+    new_message = Messages(content=message, user_id=user.id)
+    db.session.add(new_message)
+    db.session.commit()
+
+    socketio.emit('message', {'content': message, 'timestamp': new_message.timestamp, 'sender': session['user']}, broadcast=True)
+
+# Function to get messages for the current user
+def get_user_messages():
+    user = Users.query.filter_by(username=session['user']).first()
+    messages = Messages.query.filter_by(user_id=user.id).all()
+    return messages
+
+# Function to get all users except the current user
+def get_all_users():
+    users = Users.query.filter(Users.username != session['user']).all()
+    return users
 
 class MessageResource(Resource):
     @login_required

@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO
 from flask_restful import Api
@@ -20,8 +20,15 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize the SQLAlchemy extension
 db.init_app(app)
+
+
 socketio = SocketIO(app)
 api = Api(app)
+
+# Set the initial route to '/login'
+@app.route('/')
+def initial():
+    return redirect(url_for('login'))
 
 # Routes
 app.add_url_rule('/register', 'register', register_user, methods=['GET', 'POST'])

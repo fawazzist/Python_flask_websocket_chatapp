@@ -3,27 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="/static/styles.css">
     <title>Chat</title>
 </head>
 <body>
     <div class="container">
+        <div class="top-bar">
+            <h3>Chat</h3>
+            <button class="logout-button" onclick="logout_user()">Logout</button>
+        </div>
         <div class="chat-container">
             <div class="user-list">
                 <h3>Users</h3>
                 <select id="user-list" size="10"></select>
             </div>
             <div class="chat">
-                <div class="chat-header">
-                    <span id="user-name"></span>
-                    <button class="logout-button">Logout</button>
-                </div>
                 <div class="message-list" id="message-list">
                     <!-- Message list goes here -->
                 </div>
                 <div class="message-input">
-                    <input type="text" id="message-input" placeholder="Type your message">
-                    <button id="send-button" class="send-button">Send</button>
+                    <div class="message-input-container">
+                        <input type="text" id="message-input" placeholder="Type your message">
+                        <button id="send-button" class="send-button">Send</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -33,6 +35,8 @@
         document.addEventListener("DOMContentLoaded", function () {
             const socket = io.connect("http://localhost:5000");
             const userList = document.getElementById("user-list");
+            const messageList = document.getElementById("message-list");
+            const userName = document.getElementById("user-name");
 
             // Fetch user data
             fetchUsers();
@@ -52,11 +56,22 @@
             }
 
             // Listen for incoming messages
-            socket.on("message", (message) => {
-                const messageList = document.getElementById("message-list");
+            socket.on("message", (messageData) => {
                 const listItem = document.createElement("div");
-                listItem.classList.add("message-item", "message-received");
-                listItem.textContent = message;
+                listItem.classList.add("message-item");
+                listItem.textContent = messageData.content;
+
+                const timestamp = document.createElement("small");
+                timestamp.textContent = messageData.timestamp;
+
+                listItem.appendChild(timestamp);
+
+                if (messageData.sender === userName.textContent) {
+                    listItem.classList.add("message-sent");
+                } else {
+                    listItem.classList.add("message-received");
+                }
+
                 messageList.appendChild(listItem);
             });
 
@@ -69,6 +84,7 @@
                 messageInput.value = "";
             });
         });
+        
     </script>
 </body>
 </html>
