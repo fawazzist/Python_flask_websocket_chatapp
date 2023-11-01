@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css">
+    <title>Chat</title>
+</head>
+<body>
+    <div class="container">
+        <div class="chat-container">
+            <div class="user-list">
+                <h3>Users</h3>
+                <select id="user-list" size="10"></select>
+            </div>
+            <div class="chat">
+                <div class="chat-header">
+                    <span id="user-name"></span>
+                    <button class="logout-button">Logout</button>
+                </div>
+                <div class="message-list" id="message-list">
+                    <!-- Message list goes here -->
+                </div>
+                <div class="message-input">
+                    <input type="text" id="message-input" placeholder="Type your message">
+                    <button id="send-button" class="send-button">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const socket = io.connect("http://localhost:5000");
+            const userList = document.getElementById("user-list");
+
+            // Fetch user data
+            fetchUsers();
+
+            function fetchUsers() {
+                fetch('/api/users')
+                    .then(response => response.json())
+                    .then(users => {
+                        userList.innerHTML = '';
+                        users.forEach(user => {
+                            const option = document.createElement("option");
+                            option.value = user.id;
+                            option.text = user.username;
+                            userList.appendChild(option);
+                        });
+                    });
+            }
+
+            // Listen for incoming messages
+            socket.on("message", (message) => {
+                const messageList = document.getElementById("message-list");
+                const listItem = document.createElement("div");
+                listItem.classList.add("message-item", "message-received");
+                listItem.textContent = message;
+                messageList.appendChild(listItem);
+            });
+
+            // Send a message
+            const sendButton = document.getElementById("send-button");
+            sendButton.addEventListener("click", function () {
+                const messageInput = document.getElementById("message-input");
+                const message = messageInput.value;
+                socket.emit("message", message);
+                messageInput.value = "";
+            });
+        });
+    </script>
+</body>
+</html>
