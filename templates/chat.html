@@ -1,90 +1,120 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="/static/styles.css">
     <title>Chat</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="styles.css">
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 </head>
 <body>
     <div class="container">
-        <div class="top-bar">
-            <h3>Chat</h3>
-            <button class="logout-button" onclick="logout_user()">Logout</button>
-        </div>
-        <div class="chat-container">
-            <div class="user-list">
-                <h3>Users</h3>
-                <select id="user-list" size="10"></select>
-            </div>
-            <div class="chat">
-                <div class="message-list" id="message-list">
-                    <!-- Message list goes here -->
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">Users</div>
+                    <div class="card-body">
+                        <ul id="user-list" class="list-group">
+                            <!-- Populate the list of online users here -->
+                        </ul>
+                    </div>
                 </div>
-                <div class="message-input">
-                    <div class="message-input-container">
-                        <input type="text" id="message-input" placeholder="Type your message">
-                        <button id="send-button" class="send-button">Send</button>
+            </div>
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header" id="chat-header">Chat</div>
+                    <div class="card-body">
+                        <div>
+                            <label for="recipient-select">Select a recipient:</label>
+                            <select id="recipient-select" class="form-control">
+                                <!-- Populate the options with usernames from your database, excluding the current user -->
+                            </select>
+                        </div>
+                        <div id="message-box">
+                            <!-- Chat messages will be displayed here -->
+                        </div>
+                        <input type="text" id="message-input" class="form-control" placeholder="Type a message...">
+                        <button id="send-button" class="btn btn-primary">Send</button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+
     <script>
-        document.addEventListener("DOMContentLoaded", function () {
-            const socket = io.connect("http://localhost:5000");
-            const userList = document.getElementById("user-list");
-            const messageList = document.getElementById("message-list");
-            const userName = document.getElementById("user-name");
+        var socket = io.connect('http://' + document.domain + ':' + location.port);
 
-            // Fetch user data
-            fetchUsers();
+        socket.on('connect', function() {
+            // Send a message to the server to get the list of online users
+            socket.emit('get_users');
+        });
 
-            function fetchUsers() {
-                fetch('/api/users')
-                    .then(response => response.json())
-                    .then(users => {
-                        userList.innerHTML = '';
-                        users.forEach(user => {
-                            const option = document.createElement("option");
-                            option.value = user.id;
-                            option.text = user.username;
-                            userList.appendChild(option);
-                        });
-                    });
+        socket.on('user_connected', function(username) {
+            // Handle user connection, add the user to the user list
+            $('#user-list').append('<li class="list-group-item">' + username + '</li>');
+            
+            // Populate the recipient select, excluding the current user
+            var currentUser = "{{ session['user'] }}";
+            if (username !== currentUser) {
+                $('#recipient-select').append($('<option>', {
+                    value: username,
+                    text: username
+                }));
             }
+        });
 
-            // Listen for incoming messages
-            socket.on("message", (messageData) => {
-                const listItem = document.createElement("div");
-                listItem.classList.add("message-item");
-                listItem.textContent = messageData.content;
+        socket.on('user_disconnected', function(username) {
+            // Handle user disconnection, remove the user from the user list
+            $('#user-list').find('li:contains(' + username + ')').remove();
+            // Remove the corresponding option from the recipient select
+            $('#recipient-select option[value="' + username + '"]').remove();
+        });
 
-                const timestamp = document.createElement("small");
-                timestamp.textContent = messageData.timestamp;
+        socket.on('message', function(data) {
+            var messageWithTimestamp = data.sender + ' (' + getCurrentTimestamp() + '): ' + data.content;
+            var currentUser = "{{ session['user'] }}";
 
-                listItem.appendChild(timestamp);
+            if (data.sender === currentUser) {
+                $('#message-box').append('<p class="sent-message">' + messageWithTimestamp + '</p>');
+            } else if (data.recipient === currentUser) {
+                $('#message-box').append('<p class="received-message">' + messageWithTimestamp + '</p>');
+            }
+        });
 
-                if (messageData.sender === userName.textContent) {
-                    listItem.classList.add("message-sent");
-                } else {
-                    listItem.classList.add("message-received");
+        socket.on('users_list', function(users) {
+            $('#user-list').empty();
+            $('#recipient-select').empty();
+        
+            var currentUser = "{{ session['user'] }";
+        
+            users.forEach(function(user) {
+                if (user.toLowerCase() !== currentUser.toLowerCase()) {
+                    $('#user-list').append('<li class="list-group-item">' + user + '</li>');
+                    $('#recipient-select').append($('<option>', {
+                        value: user,
+                        text: user
+                    }));
                 }
-
-                messageList.appendChild(listItem);
-            });
-
-            // Send a message
-            const sendButton = document.getElementById("send-button");
-            sendButton.addEventListener("click", function () {
-                const messageInput = document.getElementById("message-input");
-                const message = messageInput.value;
-                socket.emit("message", message);
-                messageInput.value = "";
             });
         });
         
+
+        $('#send-button').on('click', function() {
+            var recipient = $('#recipient-select').val(); // Get the selected recipient from the dropdown
+            var content = $('#message-input').val(); // Get the message content as a string
+            if (recipient && content) {
+                socket.emit('message', { recipient: recipient, content: content });
+                $('#message-input').val('');
+            }
+        });
+        
+
+        function getCurrentTimestamp() {
+            var now = new Date();
+            var hours = now.getHours().toString().padStart(2, '0');
+            var minutes = now.getMinutes().toString().padStart(2, '0');
+            return hours + ':' + minutes;
+        }
     </script>
 </body>
 </html>

@@ -1,9 +1,9 @@
-from flask import Flask, redirect, url_for
+from flask import Flask, redirect, session, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_socketio import SocketIO
 from flask_restful import Api
 
-from utilities import get_users, login_required, register_user, login_user, chat, logout_user, handle_message, MessageResource
+from utilities import get_users, handle_connect, handle_disconnect, register_user, login_user, chat, logout_user, handle_message, send_message
 from dbs import db
 import configparser
 
@@ -36,12 +36,17 @@ app.add_url_rule('/login', 'login', login_user, methods=['GET', 'POST'])
 app.add_url_rule('/chat', 'chat', chat)
 app.add_url_rule('/logout', 'logout', logout_user)
 app.add_url_rule('/api/users', 'get_users', get_users)
-api.add_resource(MessageResource, '/api/messages')
 
 # WebSocket event for handling messages
+@socketio.on('connect')
+def handle_socket_connect():
+    handle_connect(socketio)
+@socketio.on('disconnect')
+def handle_socket_disconnect():
+    handle_disconnect(socketio)
 @socketio.on('message')
-def handle_message_socketio(message):
-    handle_message(socketio, message)
+def handle_socket_message(data):
+    send_message(socketio, data, session)
 
 if __name__ == '__main__':
     socketio.run(app, debug=app.config.get('DEBUG', False))

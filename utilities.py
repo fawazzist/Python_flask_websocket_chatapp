@@ -1,24 +1,19 @@
-from flask import request, session, redirect, url_for, render_template
-from flask_login import current_user
-from flask_bcrypt import Bcrypt
+import json
+from flask import redirect, request, session, render_template, jsonify, url_for
+from flask_socketio import emit
 from functools import wraps
+from flask_bcrypt import Bcrypt
 from datetime import datetime
-from flask_restful import Resource, reqparse
-from flask import jsonify
 
 from models import Users, Messages
 from dbs import db
 
-
 bcrypt = Bcrypt()
-
-
 
 def get_users():
     users = Users.query.all()
     users_data = [{'username': user.username} for user in users]
     return jsonify(users_data)
-
 
 def login_required(f):
     @wraps(f)
@@ -65,42 +60,58 @@ def logout_user():
     session.pop('user', None)
     return redirect(url_for('login'))
 
+def handle_connect(socketio):
+    username = session['user']
+    emit('user_connected', username, broadcast=True)
+
+def handle_disconnect(socketio):
+    username = session['user']
+    emit('user_disconnected', username, broadcast=True)
+
 def handle_message(socketio, message):
     user = Users.query.filter_by(username=session['user']).first()
     new_message = Messages(content=message, user_id=user.id)
     db.session.add(new_message)
     db.session.commit()
 
-    socketio.emit('message', {'content': message, 'timestamp': new_message.timestamp, 'sender': session['user']}, broadcast=True)
+    socketio.emit('message', {
+        'content': message,
+        'timestamp': new_message.timestamp,
+        'sender': session['user']
+    }, broadcast=True)
 
-# Function to get messages for the current user
-def get_user_messages():
-    user = Users.query.filter_by(username=session['user']).first()
-    messages = Messages.query.filter_by(user_id=user.id).all()
-    return messages
+def get_recipient_user():
+    # Replace this with your logic to select a recipient user
+    recipient = Users.query.filter(Users.username != session['user']).first()
+    if recipient:
+        return recipient.username
+    return None
 
-# Function to get all users except the current user
-def get_all_users():
-    users = Users.query.filter(Users.username != session['user']).all()
-    return users
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, datetime):
+            return o.strftime('%Y-%m-%d %H:%M:%S')
+        return super().default(o)
 
-class MessageResource(Resource):
-    @login_required
-    def get(self):
-        messages = Messages.query.filter_by(user_id=current_user.id).all()
-        return [message.serialize() for message in messages]
+def send_message(socketio, data, session):
+    recipient = data['recipient']
+    content = data['content']
 
-    @login_required
-    def post(self):
-        parser = reqparse.RequestParser()
-        parser.add_argument('content', type=str, required=True, help='Content is required')
-        args = parser.parse_args()
+    sender_user = Users.query.filter_by(username=session['user']).first()
+    recipient_user = Users.query.filter_by(username=recipient).first()
 
-        new_message = Messages(
-            content=args['content'],
-            timestamp=datetime.now(),
-            user_id=current_user.id
-        )
+    if sender_user and recipient_user:
+        new_message = Messages(content=content, sender_id=sender_user.id, recipient_id=recipient_user.id, timestamp=datetime.now())
         db.session.add(new_message)
         db.session.commit()
-        return new_message.serialize(), 201
+
+        message_data = {
+            'content': content,
+            'timestamp': new_message.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
+            'sender': session['user']
+        }
+
+        # Use room-based communication to send the message to the recipient
+        room = f'{sender_user.id}-{recipient_user.id}'
+        socketio.emit('message', message_data, room=room)
+
